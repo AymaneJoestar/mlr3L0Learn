@@ -15,10 +15,11 @@ The loss is always the squared error. Features must be `"integer"` or
 ## Initial parameter values
 
 All parameters have the tag `"train"` and are passed to
-[`L0Learn::L0Learn.cvfit()`](https://rdrr.io/pkg/L0Learn/man/L0Learn.cvfit.html).
-Parameters that are not set explicitly keep the defaults of L0Learn.
-`nGamma`, `gammaMax` and `gammaMin` only matter for the `"L0L1"` and
-`"L0L2"` penalties.
+[`L0Learn::L0Learn.cvfit()`](https://rdrr.io/pkg/L0Learn/man/L0Learn.cvfit.html),
+except `selection`, which is used by the learner itself. Parameters that
+are not set explicitly keep the defaults of L0Learn. `nGamma`,
+`gammaMax` and `gammaMin` only matter for the `"L0L1"` and `"L0L2"`
+penalties.
 
 ## Cross-validation folds
 
@@ -41,10 +42,31 @@ for a given `seed`, whose default is `1`.
 
 ## Choice of lambda and gamma
 
-The learner uses the pair with the smallest mean cross-validated error.
-When several values are tied, the one with the largest support is used.
-Note that the cross-validated errors reported by L0Learn are not
-directly comparable to the test errors computed by mlr3 measures.
+With `selection = "min"` (the default) the learner uses the pair with
+the smallest mean cross-validated error. When several values are tied,
+the one furthest along the `lambda` path (the smallest `lambda`, usually
+the largest support) is used.
+
+With `selection = "1se"` the learner keeps the `gamma` of that minimum,
+then takes the model on the `lambda` path with the smallest support
+among those whose mean cross-validated error is within one standard
+error of the minimum. The standard error is the standard deviation of
+the fold errors at the minimum divided by `sqrt(nFolds)`. If it is not
+available the minimum is used, with a warning. This usually gives a
+smaller support and a more stable choice of features.
+
+## Bounds and custom penalty grids
+
+`lows` and `highs` are single numbers that bound every coefficient, with
+`lows <= 0 <= highs` and `lows < highs`. Bounds are not supported by
+`algorithm = "CDPSI"`. `lambdaGrid` is a list of strictly decreasing
+positive numeric vectors. For `penalty = "L0"` it must contain exactly
+one vector, and for `"L0L1"` and `"L0L2"` it contains one vector per
+value of `gamma`. When it is set, `nLambda` is ignored by L0Learn and
+`nGamma` is replaced by the number of vectors. L0Learn can drop the last
+values of a grid whose support exceeds `maxSuppSize`, so the stored path
+may be shorter than the grid. `excludeFirstK` cannot be larger than the
+number of features, because L0Learn would abort the R session.
 
 ## Model
 
@@ -57,6 +79,12 @@ After training, `learner$model` is a list with these elements:
   the regularization path of `fit`.
 
 - `lambda`, `gamma`: the selected values.
+
+- `support_size`: the number of non-zero coefficients of the selected
+  model.
+
+- `cv_mean`, `cv_sd`: the mean and standard deviation, across folds, of
+  the cross-validated error at the selected pair.
 
 ## Selected features
 

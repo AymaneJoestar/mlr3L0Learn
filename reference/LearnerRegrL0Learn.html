@@ -23,7 +23,7 @@ supported by L0Learn."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">mlr3L0Learn</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -33,6 +33,7 @@ supported by L0Learn."></head><body>
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item"><a class="nav-link" href="../articles/index.html">Articles</a></li>
+<li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
 <li class="nav-item"><a class="external-link nav-link" href="https://github.com/AymaneJoestar/mlr3L0Learn/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
@@ -67,7 +68,8 @@ supported by L0Learn.</p>
 
 
 <p>All parameters have the tag <code>"train"</code> and are passed to
-<code><a href="https://rdrr.io/pkg/L0Learn/man/L0Learn.cvfit.html" class="external-link">L0Learn::L0Learn.cvfit()</a></code>.
+<code><a href="https://rdrr.io/pkg/L0Learn/man/L0Learn.cvfit.html" class="external-link">L0Learn::L0Learn.cvfit()</a></code>, except <code>selection</code>, which is used by the learner
+itself.
 Parameters that are not set explicitly keep the defaults of L0Learn.
 <code>nGamma</code>, <code>gammaMax</code> and <code>gammaMin</code> only matter for the <code>"L0L1"</code> and
 <code>"L0L2"</code> penalties.</p>
@@ -98,10 +100,34 @@ is <code>1</code>.</p>
     <h2 id="choice-of-lambda-and-gamma">Choice of lambda and gamma<a class="anchor" aria-label="anchor" href="#choice-of-lambda-and-gamma"></a></h2>
 
 
-<p>The learner uses the pair with the smallest mean cross-validated error.
-When several values are tied, the one with the largest support is used.
-Note that the cross-validated errors reported by L0Learn are not directly
-comparable to the test errors computed by mlr3 measures.</p>
+<p>With <code>selection = "min"</code> (the default) the learner uses the pair with the
+smallest mean cross-validated error.
+When several values are tied, the one furthest along the <code>lambda</code> path
+(the smallest <code>lambda</code>, usually the largest support) is used.</p>
+<p>With <code>selection = "1se"</code> the learner keeps the <code>gamma</code> of that minimum, then
+takes the model on the <code>lambda</code> path with the smallest support among those
+whose mean cross-validated error is within one standard error of the minimum.
+The standard error is the standard deviation of the fold errors at the
+minimum divided by <code>sqrt(nFolds)</code>.
+If it is not available the minimum is used, with a warning.
+This usually gives a smaller support and a more stable choice of features.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="bounds-and-custom-penalty-grids">Bounds and custom penalty grids<a class="anchor" aria-label="anchor" href="#bounds-and-custom-penalty-grids"></a></h2>
+
+
+<p><code>lows</code> and <code>highs</code> are single numbers that bound every coefficient, with
+<code>lows &lt;= 0 &lt;= highs</code> and <code>lows &lt; highs</code>.
+Bounds are not supported by <code>algorithm = "CDPSI"</code>.
+<code>lambdaGrid</code> is a list of strictly decreasing positive numeric vectors.
+For <code>penalty = "L0"</code> it must contain exactly one vector, and for <code>"L0L1"</code>
+and <code>"L0L2"</code> it contains one vector per value of <code>gamma</code>.
+When it is set, <code>nLambda</code> is ignored by L0Learn and <code>nGamma</code> is replaced by
+the number of vectors.
+L0Learn can drop the last values of a grid whose support exceeds
+<code>maxSuppSize</code>, so the stored path may be shorter than the grid.
+<code>excludeFirstK</code> cannot be larger than the number of features, because
+L0Learn would abort the R session.</p>
     </div>
     <div class="section level2">
     <h2 id="model">Model<a class="anchor" aria-label="anchor" href="#model"></a></h2>
@@ -111,6 +137,9 @@ comparable to the test errors computed by mlr3 measures.</p>
 <li><p><code>gamma_index</code>, <code>lambda_index</code>: the position of the selected pair in the
 regularization path of <code>fit</code>.</p></li>
 <li><p><code>lambda</code>, <code>gamma</code>: the selected values.</p></li>
+<li><p><code>support_size</code>: the number of non-zero coefficients of the selected model.</p></li>
+<li><p><code>cv_mean</code>, <code>cv_sd</code>: the mean and standard deviation, across folds, of the
+cross-validated error at the selected pair.</p></li>
 </ul></div>
     <div class="section level2">
     <h2 id="selected-features">Selected features<a class="anchor" aria-label="anchor" href="#selected-features"></a></h2>
