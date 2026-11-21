@@ -12,7 +12,8 @@ Description: Provides a regression learner for the 'mlr3' framework that
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-URL: https://github.com/AymaneJoestar/mlr3L0Learn
+URL: https://github.com/AymaneJoestar/mlr3L0Learn,
+    https://mlr3l0learn.netlify.app
 BugReports: https://github.com/AymaneJoestar/mlr3L0Learn/issues
 Depends: R (>= 4.0.0)
 Imports:
