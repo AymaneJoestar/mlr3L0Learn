@@ -299,3 +299,78 @@ test_that("other L0Learn errors are not blamed on nFolds", {
   expect_match(error, "Bounds must conform")
   expect_false(grepl("fold splitting", error))
 })
+
+make_cv_fit <- function(means, sds, supp) {
+  list(
+    fit = list(
+      lambda = list(seq_along(means)),
+      gamma = 0,
+      suppSize = list(supp)),
+    cvMeans = list(means),
+    cvSDs = list(sds))
+}
+
+test_that("1se picks the smallest support among the candidates", {
+  fit <- make_cv_fit(c(5, 2.05, 2.04, 2), rep(1, 4), c(0, 4, 1, 5))
+  chosen <- l0learn_select(fit, "1se", 4L, 100L)
+  expect_identical(chosen$lambda_index, 3L)
+  expect_identical(chosen$support_size, 1L)
+  minimum <- l0learn_select(fit, "min", 4L, 100L)
+  expect_identical(minimum$lambda_index, 4L)
+})
+
+test_that("1se falls back to the minimum with a warning without a SD", {
+  fit <- make_cv_fit(c(5, 2.05, 2), c(NaN, NaN, NaN), c(0, 4, 5))
+  expect_warning(
+    chosen <- l0learn_select(fit, "1se", 4L, 100L), "standard error")
+  expect_identical(chosen$lambda_index, 3L)
+})
+
+test_that("a gamma with only NaN errors is ignored without warnings", {
+  fit <- list(
+    fit = list(
+      lambda = list(1:3, 1:3),
+      gamma = c(1, 2),
+      suppSize = list(c(0, 1, 2), c(0, 1, 2))),
+    cvMeans = list(c(NaN, NaN, NaN), c(3, 2, 2.5)),
+    cvSDs = list(c(NaN, NaN, NaN), c(1, 1, 1)))
+  expect_no_warning(chosen <- l0learn_select(fit, "min", 5L, 100L))
+  expect_identical(chosen$gamma_index, 2L)
+  expect_identical(chosen$lambda_index, 2L)
+})
+
+test_that("1se works with several gammas", {
+  task <- simulate_sparse_task(n = 100L, p = 20L)
+  learner <- mlr3::lrn(
+    "regr.L0Learn", penalty = "L0L2", nGamma = 3L, nLambda = 20L,
+    nFolds = 3L, selection = "1se")
+  learner$train(task)
+  expect_length(learner$predict(task)$response, task$nrow)
+  expect_true(learner$model$gamma_index %in% 1:3)
+})
+
+test_that("default bound values are accepted with CDPSI", {
+  task <- simulate_sparse_task(n = 100L, p = 20L)
+  learner <- mlr3::lrn(
+    "regr.L0Learn", algorithm = "CDPSI", lows = -Inf, highs = Inf,
+    nFolds = 3L)
+  expect_no_error(learner$train(task))
+})
+
+test_that("a one-sided bound works", {
+  task <- simulate_sparse_task()
+  learner <- mlr3::lrn("regr.L0Learn", nFolds = 5L, lows = 0)
+  learner$train(task)
+  expect_true(all(l0learn_coef(learner$model)$beta >= 0))
+  learner <- mlr3::lrn("regr.L0Learn", nFolds = 5L, highs = 0)
+  learner$train(task)
+  expect_true(all(l0learn_coef(learner$model)$beta <= 0))
+})
+
+test_that("a grid with penalty L0L2 does not warn about nGamma", {
+  task <- simulate_sparse_task(n = 100L, p = 20L)
+  learner <- mlr3::lrn(
+    "regr.L0Learn", penalty = "L0L2", nFolds = 3L,
+    lambdaGrid = list(c(1, 0.1), c(1, 0.1, 0.01)))
+  expect_no_warning(learner$train(task))
+})

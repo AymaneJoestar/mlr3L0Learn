@@ -19,7 +19,8 @@ supported by L0Learn.
 \section{Initial parameter values}{
 
 All parameters have the tag \code{"train"} and are passed to
-\code{\link[L0Learn:L0Learn.cvfit]{L0Learn::L0Learn.cvfit()}}.
+\code{\link[L0Learn:L0Learn.cvfit]{L0Learn::L0Learn.cvfit()}}, except \code{selection}, which is used by the learner
+itself.
 Parameters that are not set explicitly keep the defaults of L0Learn.
 \code{nGamma}, \code{gammaMax} and \code{gammaMin} only matter for the \code{"L0L1"} and
 \code{"L0L2"} penalties.
@@ -49,13 +50,15 @@ is \code{1}.
 
 With \code{selection = "min"} (the default) the learner uses the pair with the
 smallest mean cross-validated error.
-When several values are tied, the one with the largest support is used.
+When several values are tied, the one furthest along the \code{lambda} path
+(the smallest \code{lambda}, usually the largest support) is used.
 
 With \code{selection = "1se"} the learner keeps the \code{gamma} of that minimum, then
-takes the sparsest model on the \code{lambda} path whose mean cross-validated
-error is within one standard error of the minimum.
-The standard error is the standard deviation of the fold errors divided by
-\code{sqrt(nFolds)}.
+takes the model on the \code{lambda} path with the smallest support among those
+whose mean cross-validated error is within one standard error of the minimum.
+The standard error is the standard deviation of the fold errors at the
+minimum divided by \code{sqrt(nFolds)}.
+If it is not available the minimum is used, with a warning.
 This usually gives a smaller support and a more stable choice of features.
 }
 
@@ -69,6 +72,8 @@ For \code{penalty = "L0"} it must contain exactly one vector, and for \code{"L0L
 and \code{"L0L2"} it contains one vector per value of \code{gamma}.
 When it is set, \code{nLambda} is ignored by L0Learn and \code{nGamma} is replaced by
 the number of vectors.
+L0Learn can drop the last values of a grid whose support exceeds
+\code{maxSuppSize}, so the stored path may be shorter than the grid.
 \code{excludeFirstK} cannot be larger than the number of features, because
 L0Learn would abort the R session.
 }

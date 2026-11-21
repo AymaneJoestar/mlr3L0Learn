@@ -17,7 +17,8 @@
 #'
 #' @section Initial parameter values:
 #' All parameters have the tag `"train"` and are passed to
-#' [L0Learn::L0Learn.cvfit()].
+#' [L0Learn::L0Learn.cvfit()], except `selection`, which is used by the learner
+#' itself.
 #' Parameters that are not set explicitly keep the defaults of L0Learn.
 #' `nGamma`, `gammaMax` and `gammaMin` only matter for the `"L0L1"` and
 #' `"L0L2"` penalties.
@@ -41,13 +42,15 @@
 #' @section Choice of lambda and gamma:
 #' With `selection = "min"` (the default) the learner uses the pair with the
 #' smallest mean cross-validated error.
-#' When several values are tied, the one with the largest support is used.
+#' When several values are tied, the one furthest along the `lambda` path
+#' (the smallest `lambda`, usually the largest support) is used.
 #'
 #' With `selection = "1se"` the learner keeps the `gamma` of that minimum, then
-#' takes the sparsest model on the `lambda` path whose mean cross-validated
-#' error is within one standard error of the minimum.
-#' The standard error is the standard deviation of the fold errors divided by
-#' `sqrt(nFolds)`.
+#' takes the model on the `lambda` path with the smallest support among those
+#' whose mean cross-validated error is within one standard error of the minimum.
+#' The standard error is the standard deviation of the fold errors at the
+#' minimum divided by `sqrt(nFolds)`.
+#' If it is not available the minimum is used, with a warning.
 #' This usually gives a smaller support and a more stable choice of features.
 #'
 #' @section Bounds and custom penalty grids:
@@ -59,6 +62,8 @@
 #' and `"L0L2"` it contains one vector per value of `gamma`.
 #' When it is set, `nLambda` is ignored by L0Learn and `nGamma` is replaced by
 #' the number of vectors.
+#' L0Learn can drop the last values of a grid whose support exceeds
+#' `maxSuppSize`, so the stored path may be shorter than the grid.
 #' `excludeFirstK` cannot be larger than the number of features, because
 #' L0Learn would abort the R session.
 #'

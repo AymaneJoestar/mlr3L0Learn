@@ -23,7 +23,8 @@ l0learn_check_grid <- function(x) {
 }
 
 l0learn_prepare_args <- function(pv, n_features) {
-  has_bounds <- !is.null(pv$lows) || !is.null(pv$highs)
+  has_bounds <- (!is.null(pv$lows) && is.finite(pv$lows)) ||
+    (!is.null(pv$highs) && is.finite(pv$highs))
   if (has_bounds && identical(pv$algorithm, "CDPSI")) {
     mlr3misc::stopf("Bounds (lows, highs) are not supported by algorithm = \"CDPSI\".")
   }
@@ -85,12 +86,20 @@ l0learn_select <- function(fit, selection, n_folds, n_rows) {
       "L0Learn::L0Learn.cvfit() returned only NaN cross-validation errors for %i rows and nFolds = %i. Choose another value of nFolds.",
       n_rows, n_folds)
   }
-  best_cv <- vapply(cv_means, min, numeric(1), na.rm = TRUE)
+  best_cv <- vapply(cv_means, function(cv) {
+    if (all(is.na(cv))) Inf else min(cv, na.rm = TRUE)
+  }, numeric(1))
   g <- which.min(best_cv)
   l <- max(which(cv_means[[g]] == best_cv[g]))
-  if (selection == "1se" && !is.na(cv_sds[[g]][l])) {
-    threshold <- best_cv[g] + cv_sds[[g]][l] / sqrt(n_folds)
-    l <- min(which(cv_means[[g]] <= threshold))
+  if (selection == "1se") {
+    if (is.na(cv_sds[[g]][l])) {
+      mlr3misc::warningf(
+        "The standard error of the cross-validated error is not available, so the minimum is used instead of the 1se rule.")
+    } else {
+      threshold <- best_cv[g] + cv_sds[[g]][l] / sqrt(n_folds)
+      candidates <- which(cv_means[[g]] <= threshold)
+      l <- candidates[which.min(fit$fit$suppSize[[g]][candidates])]
+    }
   }
   list(
     fit = fit,
