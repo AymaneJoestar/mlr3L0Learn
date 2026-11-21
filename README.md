@@ -39,9 +39,14 @@ The penalty strength `lambda` (and `gamma` for the `"L0L1"` and `"L0L2"`
 penalties) is chosen by cross-validation inside `L0Learn::L0Learn.cvfit()`.
 The pair with the smallest cross-validated error is used for prediction.
 
-`L0Learn::L0Learn.cvfit()` can fail on very small data sets when `nFolds` is
-too large (for example `nFolds = 10` on `mtcars`), so pass a smaller `nFolds`
-in that case.
+`L0Learn::L0Learn.cvfit()` cannot split every number of rows into every
+number of folds: it fails, or returns only `NaN` errors, when
+`ceiling(n / nFolds) * (nFolds - 1) >= n`. For example the default
+`nFolds = 10` does not work on the 32 rows of `mtcars`. The learner reports
+this with an informative error, so pass another `nFolds`.
+
+Training does not change the global random number generator state. The
+cross-validation folds are controlled by the `seed` parameter.
 
 A benchmark against `regr.featureless`, `regr.cv_glmnet` and a tuned k-nearest
 neighbors learner is in the vignette:

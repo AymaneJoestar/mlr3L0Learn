@@ -20,14 +20,14 @@ Imports:
     mlr3,
     mlr3misc,
     paradox,
-    R6,
-    stats
+    R6
 Suggests:
     data.table,
     ggplot2,
     glmnet,
     kknn,
     knitr,
+    lgr,
     MASS,
     mlr3learners,
     mlr3tuning,

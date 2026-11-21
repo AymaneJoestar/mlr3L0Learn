@@ -27,18 +27,40 @@ Parameters that are not set explicitly keep the defaults of L0Learn.
 
 \section{Cross-validation folds}{
 
-\code{L0Learn::L0Learn.cvfit()} fails with an out-of-bounds error on some very
-small data sets, for example \code{nFolds = 10} on the 32 rows of
-\code{mlr3::tsk("mtcars")}.
-Use a smaller \code{nFolds} such as \code{5L} when the number of rows is small.
+The folds are built by \code{L0Learn::L0Learn.cvfit()}, which cannot split every
+number of rows \code{n} into every number of folds \code{nFolds}.
+When \code{ceiling(n / nFolds) * (nFolds - 1) >= n} it either fails with an
+out-of-bounds error or returns only \code{NaN} cross-validation errors.
+For example \code{nFolds = 10} fails on the 32 rows of \code{mlr3::tsk("mtcars")}.
+The learner then stops with an informative error, and another value of
+\code{nFolds} must be chosen.
+}
+
+\section{Random numbers}{
+
+\code{L0Learn::L0Learn.cvfit()} calls \code{set.seed(seed)}.
+The learner restores the state of the random number generator after
+training, so fitting it does not change the random numbers drawn afterwards.
+The cross-validation folds are the same for a given \code{seed}, whose default
+is \code{1}.
+}
+
+\section{Choice of lambda and gamma}{
+
+The learner uses the pair with the smallest mean cross-validated error.
+When several values are tied, the one with the largest support is used.
+Note that the cross-validated errors reported by L0Learn are not directly
+comparable to the test errors computed by mlr3 measures.
 }
 
 \section{Model}{
 
-After training, \code{learner$model} is a list with three elements:
+After training, \code{learner$model} is a list with these elements:
 \itemize{
 \item \code{fit}: the \code{"L0LearnCV"} object returned by \code{\link[L0Learn:L0Learn.cvfit]{L0Learn::L0Learn.cvfit()}}.
-\item \code{lambda}, \code{gamma}: the pair that minimizes the mean cross-validated error.
+\item \code{gamma_index}, \code{lambda_index}: the position of the selected pair in the
+regularization path of \code{fit}.
+\item \code{lambda}, \code{gamma}: the selected values.
 }
 }
 

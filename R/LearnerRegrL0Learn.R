@@ -23,15 +23,33 @@
 #' `"L0L2"` penalties.
 #'
 #' @section Cross-validation folds:
-#' `L0Learn::L0Learn.cvfit()` fails with an out-of-bounds error on some very
-#' small data sets, for example `nFolds = 10` on the 32 rows of
-#' `mlr3::tsk("mtcars")`.
-#' Use a smaller `nFolds` such as `5L` when the number of rows is small.
+#' The folds are built by `L0Learn::L0Learn.cvfit()`, which cannot split every
+#' number of rows `n` into every number of folds `nFolds`.
+#' When `ceiling(n / nFolds) * (nFolds - 1) >= n` it either fails with an
+#' out-of-bounds error or returns only `NaN` cross-validation errors.
+#' For example `nFolds = 10` fails on the 32 rows of `mlr3::tsk("mtcars")`.
+#' The learner then stops with an informative error, and another value of
+#' `nFolds` must be chosen.
+#'
+#' @section Random numbers:
+#' `L0Learn::L0Learn.cvfit()` calls `set.seed(seed)`.
+#' The learner restores the state of the random number generator after
+#' training, so fitting it does not change the random numbers drawn afterwards.
+#' The cross-validation folds are the same for a given `seed`, whose default
+#' is `1`.
+#'
+#' @section Choice of lambda and gamma:
+#' The learner uses the pair with the smallest mean cross-validated error.
+#' When several values are tied, the one with the largest support is used.
+#' Note that the cross-validated errors reported by L0Learn are not directly
+#' comparable to the test errors computed by mlr3 measures.
 #'
 #' @section Model:
-#' After training, `learner$model` is a list with three elements:
+#' After training, `learner$model` is a list with these elements:
 #' * `fit`: the `"L0LearnCV"` object returned by [L0Learn::L0Learn.cvfit()].
-#' * `lambda`, `gamma`: the pair that minimizes the mean cross-validated error.
+#' * `gamma_index`, `lambda_index`: the position of the selected pair in the
+#'   regularization path of `fit`.
+#' * `lambda`, `gamma`: the selected values.
 #'
 #' @section Selected features:
 #' `learner$selected_features()` returns the names of the features with a
@@ -69,12 +87,19 @@ LearnerRegrL0Learn <- R6::R6Class(
         maxSuppSize = paradox::p_int(
           lower = 1L, default = 100L, tags = "train"),
         nLambda = paradox::p_int(lower = 1L, default = 100L, tags = "train"),
-        nGamma = paradox::p_int(lower = 1L, default = 10L, tags = "train"),
-        gammaMax = paradox::p_dbl(lower = 0, default = 10, tags = "train"),
-        gammaMin = paradox::p_dbl(lower = 0, default = 1e-4, tags = "train"),
+        nGamma = paradox::p_int(
+          lower = 1L, default = 10L, tags = "train",
+          depends = penalty %in% c("L0L1", "L0L2")),
+        gammaMax = paradox::p_dbl(
+          lower = 0, default = 10, tags = "train",
+          depends = penalty %in% c("L0L1", "L0L2")),
+        gammaMin = paradox::p_dbl(
+          lower = 0, default = 1e-4, tags = "train",
+          depends = penalty %in% c("L0L1", "L0L2")),
         partialSort = paradox::p_lgl(default = TRUE, tags = "train"),
         maxIters = paradox::p_int(lower = 1L, default = 200L, tags = "train"),
-        rtol = paradox::p_dbl(lower = 0, default = 1e-6, tags = "train"),
+        rtol = paradox::p_dbl(
+          lower = 0, upper = 1 - 1e-8, default = 1e-6, tags = "train"),
         atol = paradox::p_dbl(lower = 0, default = 1e-9, tags = "train"),
         activeSet = paradox::p_lgl(default = TRUE, tags = "train"),
         activeSetNum = paradox::p_int(
@@ -86,6 +111,8 @@ LearnerRegrL0Learn <- R6::R6Class(
           lower = 1L, default = 1000L, tags = "train"),
         nFolds = paradox::p_int(lower = 2L, default = 10L, tags = "train"),
         seed = paradox::p_int(default = 1L, tags = "train"),
+        excludeFirstK = paradox::p_int(
+          lower = 0L, default = 0L, tags = "train"),
         intercept = paradox::p_lgl(default = TRUE, tags = "train")
       )
       super$initialize(
@@ -106,10 +133,9 @@ LearnerRegrL0Learn <- R6::R6Class(
     #' @return `character()`.
     selected_features = function() {
       if (is.null(self$model)) {
-        stop("Learner has not been trained yet.")
+        mlr3misc::stopf("Learner has not been trained yet.")
       }
-      beta <- l0learn_coef(self$model)
-      self$state$feature_names[beta != 0]
+      self$state$feature_names[l0learn_coef(self$model)$beta != 0]
     }
   ),
 
@@ -118,26 +144,28 @@ LearnerRegrL0Learn <- R6::R6Class(
       x <- l0learn_matrix(task, task$feature_names)
       y <- task$truth()
       pv <- self$param_set$get_values(tags = "train")
-      fit <- mlr3misc::invoke(
-        L0Learn::L0Learn.cvfit,
-        x = x, y = y, loss = "SquaredError",
-        .args = pv)
-      best_cv <- vapply(fit$cvMeans, min, numeric(1))
+      fit <- l0learn_cvfit(x, y, pv)
+      cv_means <- lapply(fit$cvMeans, as.numeric)
+      if (all(is.na(unlist(cv_means)))) {
+        mlr3misc::stopf(
+          "L0Learn::L0Learn.cvfit() returned only NaN cross-validation errors for %i rows and nFolds = %i. Choose another value of nFolds.",
+          nrow(x), l0learn_n_folds(pv))
+      }
+      best_cv <- vapply(cv_means, min, numeric(1), na.rm = TRUE)
       g <- which.min(best_cv)
-      cv_g <- as.numeric(fit$cvMeans[[g]])
-      l <- which.min(cv_g)
+      l <- max(which(cv_means[[g]] == best_cv[g]))
       list(
         fit = fit,
+        gamma_index = g,
+        lambda_index = l,
         lambda = fit$fit$lambda[[g]][l],
         gamma = fit$fit$gamma[g])
     },
 
     .predict = function(task) {
       x <- l0learn_matrix(task, self$state$feature_names)
-      pred <- stats::predict(
-        self$model$fit, newx = x,
-        lambda = self$model$lambda, gamma = self$model$gamma)
-      list(response = as.numeric(pred))
+      coefs <- l0learn_coef(self$model)
+      list(response = as.numeric(coefs$a0 + x %*% coefs$beta))
     }
   )
 )
@@ -148,8 +176,41 @@ l0learn_matrix <- function(task, feature_names) {
   x
 }
 
+l0learn_n_folds <- function(pv) {
+  if (is.null(pv$nFolds)) 10L else pv$nFolds
+}
+
+l0learn_cvfit <- function(x, y, pv) {
+  seed_name <- ".Random.seed"
+  global_env <- globalenv()
+  had_seed <- exists(seed_name, envir = global_env, inherits = FALSE)
+  if (had_seed) {
+    old_seed <- get(seed_name, envir = global_env, inherits = FALSE)
+  }
+  on.exit({
+    if (had_seed) {
+      assign(seed_name, old_seed, envir = global_env)
+    } else if (exists(seed_name, envir = global_env, inherits = FALSE)) {
+      rm(list = seed_name, envir = global_env)
+    }
+  }, add = TRUE)
+  tryCatch(
+    mlr3misc::invoke(
+      L0Learn::L0Learn.cvfit,
+      x = x, y = y, loss = "SquaredError",
+      .args = pv),
+    error = function(e) {
+      mlr3misc::stopf(
+        "L0Learn::L0Learn.cvfit() failed for %i rows and nFolds = %i: %s. Its fold splitting breaks for some combinations of rows and folds, so choose another value of nFolds.",
+        nrow(x), l0learn_n_folds(pv), conditionMessage(e))
+    })
+}
+
 l0learn_coef <- function(model) {
-  beta <- stats::coef(
-    model$fit, lambda = model$lambda, gamma = model$gamma)
-  as.numeric(beta)[-1]
+  path <- model$fit$fit
+  g <- model$gamma_index
+  l <- model$lambda_index
+  list(
+    a0 = path$a0[[g]][l],
+    beta = as.numeric(path$beta[[g]][, l]))
 }
