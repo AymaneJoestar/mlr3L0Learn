@@ -1,6 +1,6 @@
 Package: mlr3L0Learn
 Title: 'mlr3' Learner for L0-Regularized Regression via 'L0Learn'
-Version: 0.0.1
+Version: 0.1.0
 Authors@R:
     person("Aymane", "Aboulhouda", role = c("aut", "cre"),
            email = "aymane.aboulhouda@usherbrooke.ca")
