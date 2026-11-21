@@ -47,10 +47,30 @@ is \code{1}.
 
 \section{Choice of lambda and gamma}{
 
-The learner uses the pair with the smallest mean cross-validated error.
+With \code{selection = "min"} (the default) the learner uses the pair with the
+smallest mean cross-validated error.
 When several values are tied, the one with the largest support is used.
-Note that the cross-validated errors reported by L0Learn are not directly
-comparable to the test errors computed by mlr3 measures.
+
+With \code{selection = "1se"} the learner keeps the \code{gamma} of that minimum, then
+takes the sparsest model on the \code{lambda} path whose mean cross-validated
+error is within one standard error of the minimum.
+The standard error is the standard deviation of the fold errors divided by
+\code{sqrt(nFolds)}.
+This usually gives a smaller support and a more stable choice of features.
+}
+
+\section{Bounds and custom penalty grids}{
+
+\code{lows} and \code{highs} are single numbers that bound every coefficient, with
+\verb{lows <= 0 <= highs} and \code{lows < highs}.
+Bounds are not supported by \code{algorithm = "CDPSI"}.
+\code{lambdaGrid} is a list of strictly decreasing positive numeric vectors.
+For \code{penalty = "L0"} it must contain exactly one vector, and for \code{"L0L1"}
+and \code{"L0L2"} it contains one vector per value of \code{gamma}.
+When it is set, \code{nLambda} is ignored by L0Learn and \code{nGamma} is replaced by
+the number of vectors.
+\code{excludeFirstK} cannot be larger than the number of features, because
+L0Learn would abort the R session.
 }
 
 \section{Model}{
@@ -61,6 +81,9 @@ After training, \code{learner$model} is a list with these elements:
 \item \code{gamma_index}, \code{lambda_index}: the position of the selected pair in the
 regularization path of \code{fit}.
 \item \code{lambda}, \code{gamma}: the selected values.
+\item \code{support_size}: the number of non-zero coefficients of the selected model.
+\item \code{cv_mean}, \code{cv_sd}: the mean and standard deviation, across folds, of the
+cross-validated error at the selected pair.
 }
 }
 

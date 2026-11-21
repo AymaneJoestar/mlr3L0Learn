@@ -12,6 +12,7 @@ Provides a regression learner for the 'mlr3' framework that wraps best subset se
 Useful links:
 \itemize{
   \item \url{https://github.com/AymaneJoestar/mlr3L0Learn}
+  \item \url{https://mlr3l0learn.netlify.app}
   \item Report bugs at \url{https://github.com/AymaneJoestar/mlr3L0Learn/issues}
 }
 
