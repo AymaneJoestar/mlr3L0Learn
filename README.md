@@ -1,0 +1,58 @@
+# mlr3L0Learn
+
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/AymaneJoestar/mlr3L0Learn/actions/workflows/check.yaml/badge.svg)](https://github.com/AymaneJoestar/mlr3L0Learn/actions/workflows/check.yaml)
+[![Codecov test coverage](https://codecov.io/gh/AymaneJoestar/mlr3L0Learn/branch/main/graph/badge.svg)](https://app.codecov.io/gh/AymaneJoestar/mlr3L0Learn?branch=main)
+<!-- badges: end -->
+
+`mlr3L0Learn` adds a regression learner for best subset selection to the
+[mlr3](https://mlr3.mlr-org.com) framework. It wraps `L0Learn::L0Learn.cvfit()`,
+which fits sparse linear models with L0, L0L1 and L0L2 penalties using
+coordinate descent and local combinatorial search
+([Hazimeh and Mazumder, 2020](https://doi.org/10.1287/opre.2019.1919)).
+
+## Installation
+
+```r
+remotes::install_github("AymaneJoestar/mlr3L0Learn")
+```
+
+## Usage
+
+Loading the package registers the learner `regr.L0Learn` in the `mlr3`
+learner dictionary.
+
+```r
+library(mlr3)
+library(mlr3L0Learn)
+
+task <- tsk("mtcars")
+learner <- lrn("regr.L0Learn", penalty = "L0", nFolds = 5L)
+learner$train(task)
+learner$selected_features()
+
+prediction <- learner$predict(task)
+prediction$score(msr("regr.mse"))
+```
+
+The penalty strength `lambda` (and `gamma` for the `"L0L1"` and `"L0L2"`
+penalties) is chosen by cross-validation inside `L0Learn::L0Learn.cvfit()`.
+The pair with the smallest cross-validated error is used for prediction.
+
+`L0Learn::L0Learn.cvfit()` can fail on very small data sets when `nFolds` is
+too large (for example `nFolds = 10` on `mtcars`), so pass a smaller `nFolds`
+in that case.
+
+A benchmark against `regr.featureless`, `regr.cv_glmnet` and a tuned k-nearest
+neighbors learner is in the vignette:
+
+```r
+vignette("benchmark", package = "mlr3L0Learn")
+```
+
+## Related work
+
+* [Course projects wiki](https://github.com/tdhock/2026-01-aa-grande-echelle/wiki/projets)
+* [L0Learn](https://github.com/hazimehh/L0Learn), the package used for training and prediction
+* [mlr3extralearners](https://github.com/mlr-org/mlr3extralearners), where this learner is meant to be proposed
+* [mlr3learners](https://github.com/mlr-org/mlr3learners), which provides `regr.cv_glmnet` for L1 regularization
