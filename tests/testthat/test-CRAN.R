@@ -178,3 +178,124 @@ test_that("resample and a cloned learner work", {
   cloned$param_set$set_values(nFolds = 4L)
   expect_identical(learner$param_set$values$nFolds, 3L)
 })
+
+test_that("the model stores the selected support and CV summary", {
+  task <- simulate_sparse_task()
+  learner <- mlr3::lrn("regr.L0Learn", nFolds = 5L)
+  learner$train(task)
+  model <- learner$model
+  expect_identical(model$support_size, length(learner$selected_features()))
+  expect_true(is.finite(model$cv_mean))
+  expect_true(is.finite(model$cv_sd))
+  expect_equal(
+    model$cv_mean, min(unlist(model$fit$cvMeans), na.rm = TRUE))
+})
+
+test_that("the 1se rule gives a model that is no larger and within one SE", {
+  task <- simulate_sparse_task()
+  fit_with <- function(selection) {
+    learner <- mlr3::lrn("regr.L0Learn", nFolds = 5L, selection = selection)
+    learner$train(task)
+    learner$model
+  }
+  min_model <- fit_with("min")
+  se_model <- fit_with("1se")
+  expect_lte(se_model$support_size, min_model$support_size)
+  expect_lte(se_model$cv_mean, min_model$cv_mean + min_model$cv_sd / sqrt(5))
+  expect_lte(se_model$lambda_index, min_model$lambda_index)
+})
+
+test_that("the 1se rule is strictly sparser on noisy data", {
+  set.seed(1)
+  n <- 150L
+  p <- 20L
+  x <- matrix(
+    stats::rnorm(n * p), n, p, dimnames = list(NULL, paste0("x", seq_len(p))))
+  y <- as.numeric(x[, 1:8] %*% rep(1, 8) + stats::rnorm(n, sd = 4))
+  task <- mlr3::as_task_regr(data.frame(y = y, x), target = "y")
+  sizes <- vapply(c("min", "1se"), function(selection) {
+    learner <- mlr3::lrn("regr.L0Learn", nFolds = 5L, selection = selection)
+    learner$train(task)
+    learner$model$support_size
+  }, integer(1))
+  expect_lt(sizes[["1se"]], sizes[["min"]])
+})
+
+test_that("selection = min keeps the default behaviour", {
+  task <- simulate_sparse_task(n = 100L, p = 20L)
+  default <- mlr3::lrn("regr.L0Learn", nFolds = 3L)$train(task)
+  explicit <- mlr3::lrn("regr.L0Learn", nFolds = 3L, selection = "min")
+  explicit$train(task)
+  expect_equal(
+    default$predict(task)$response, explicit$predict(task)$response)
+})
+
+test_that("bounds restrict the coefficients", {
+  task <- simulate_sparse_task()
+  learner <- mlr3::lrn("regr.L0Learn", nFolds = 5L, lows = -0.5, highs = 0.5)
+  learner$train(task)
+  beta <- as.numeric(l0learn_coef(learner$model)$beta)
+  expect_true(all(beta >= -0.5 & beta <= 0.5))
+  expect_true(any(beta != 0))
+})
+
+test_that("invalid bound settings are rejected", {
+  task <- simulate_sparse_task(n = 100L, p = 20L)
+  expect_error(
+    mlr3::lrn("regr.L0Learn", algorithm = "CDPSI", lows = -1)$train(task),
+    "CDPSI")
+  expect_error(
+    mlr3::lrn("regr.L0Learn", lows = 0, highs = 0)$train(task),
+    "smaller than highs")
+  expect_error(mlr3::lrn("regr.L0Learn", lows = 1))
+  expect_error(mlr3::lrn("regr.L0Learn", highs = -1))
+})
+
+test_that("a custom lambda grid is used", {
+  task <- simulate_sparse_task(n = 100L, p = 20L)
+  learner <- mlr3::lrn(
+    "regr.L0Learn", nFolds = 3L, lambdaGrid = list(c(1, 0.1, 0.01)))
+  learner$train(task)
+  expect_equal(learner$model$fit$fit$lambda[[1]], c(1, 0.1, 0.01))
+  expect_true(learner$model$lambda %in% c(1, 0.1, 0.01))
+})
+
+test_that("invalid lambda grids are rejected", {
+  task <- simulate_sparse_task(n = 100L, p = 20L)
+  expect_error(mlr3::lrn("regr.L0Learn", lambdaGrid = list(c(1, 2))))
+  expect_error(mlr3::lrn("regr.L0Learn", lambdaGrid = list(c(1, -1))))
+  expect_error(mlr3::lrn("regr.L0Learn", lambdaGrid = c(1, 0.1)))
+  expect_error(
+    mlr3::lrn(
+      "regr.L0Learn", lambdaGrid = list(c(1, 0.1), c(1, 0.1)))$train(task),
+    "exactly one vector")
+})
+
+test_that("a grid per gamma works with the L0L2 penalty", {
+  task <- simulate_sparse_task(n = 100L, p = 20L)
+  learner <- mlr3::lrn(
+    "regr.L0Learn", penalty = "L0L2", nFolds = 3L,
+    lambdaGrid = list(c(1, 0.1), c(1, 0.1, 0.01)))
+  learner$train(task)
+  expect_length(learner$model$fit$fit$gamma, 2L)
+  expect_length(learner$predict(task)$response, task$nrow)
+})
+
+test_that("excludeFirstK larger than the number of features is refused", {
+  task <- simulate_sparse_task(n = 100L, p = 20L)
+  learner <- mlr3::lrn("regr.L0Learn", nFolds = 3L, excludeFirstK = 21L)
+  expect_error(learner$train(task), "excludeFirstK = 21")
+  learner$param_set$set_values(excludeFirstK = 2L)
+  learner$train(task)
+  expect_true(learner$model$support_size >= 2L)
+})
+
+test_that("other L0Learn errors are not blamed on nFolds", {
+  set.seed(1)
+  x <- matrix(stats::rnorm(200), 50, 4)
+  y <- stats::rnorm(50)
+  error <- tryCatch(
+    l0learn_cvfit(x, y, list(nFolds = 3L, lows = 1)), error = conditionMessage)
+  expect_match(error, "Bounds must conform")
+  expect_false(grepl("fold splitting", error))
+})
